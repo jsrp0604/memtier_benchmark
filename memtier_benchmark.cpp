@@ -4350,6 +4350,26 @@ int main(int argc, char *argv[])
         usage();
     }
 
+    if (cfg.set_on_miss) {
+        if (cfg.multi_key_get > 0) {
+            fprintf(stderr, "error: --set-on-miss cannot be combined with --multi-key-get.\n");
+            usage();
+        }
+        if (cfg.data_import) {
+            fprintf(stderr, "error: --set-on-miss cannot be combined with --data-import.\n");
+            usage();
+        }
+        if (cfg.arbitrary_commands->is_defined()) {
+            fprintf(stderr, "error: --set-on-miss cannot be combined with --command.\n");
+            usage();
+        }
+        if (cfg.cluster_mode) {
+            fprintf(stderr, "error: --set-on-miss cannot be combined with --cluster-mode "
+                            "(a GET may route to a read replica, which cannot accept the write-back).\n");
+            usage();
+        }
+    }
+
     // Load monitor input file if specified
     if (cfg.monitor_input) {
         // Monitor input only works with Redis protocols
@@ -5033,25 +5053,6 @@ int main(int argc, char *argv[])
     if (cfg.multi_key_get > 0 && cfg.arbitrary_commands->is_defined()) {
         fprintf(stderr, "error: --multi-key-get cannot be combined with --command.\n");
         usage();
-    }
-    if (cfg.set_on_miss) {
-        if (cfg.multi_key_get > 0) {
-            fprintf(stderr, "error: --set-on-miss cannot be combined with --multi-key-get.\n");
-            usage();
-        }
-        if (cfg.data_import) {
-            fprintf(stderr, "error: --set-on-miss cannot be combined with --data-import.\n");
-            usage();
-        }
-        if (cfg.arbitrary_commands->is_defined()) {
-            fprintf(stderr, "error: --set-on-miss cannot be combined with --command.\n");
-            usage();
-        }
-        if (cfg.cluster_mode) {
-            fprintf(stderr, "error: --set-on-miss cannot be combined with --cluster-mode "
-                            "(a GET may route to a read replica, which cannot accept the write-back).\n");
-            usage();
-        }
     }
     if (cfg.data_offset > 0) {
         if (cfg.data_offset > (1 << 29) - 1) {
