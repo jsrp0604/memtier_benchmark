@@ -630,7 +630,7 @@ bool client::create_get_request(struct timeval &timestamp, unsigned int conn_id)
 
     if (res == available_for_conn) {
         m_connections[conn_id]->send_get_command(&timestamp, m_obj_gen->get_key(), m_obj_gen->get_key_len(),
-                                                 m_config->data_offset);
+                                                 m_config->data_offset, key_index, m_config->set_on_miss);
     }
 
     return true;
@@ -820,6 +820,16 @@ void client::handle_response(unsigned int conn_id, struct timeval timestamp, req
     case rt_get:
         m_stats.update_get_op(&timestamp, response->get_total_len(), request->m_size, ts_diff(ref_sent, timestamp),
                               response->get_hits(), request->m_keys - response->get_hits());
+
+        // --set-on-miss: repopulate a missed single key by writing it back with
+        // SET, regenerating the value via the same key_index 
+        if (m_config->set_on_miss && !response->is_error() && request->m_keys == 1 && response->get_hits() == 0 &&
+            request->m_key_index_valid && request->m_key != NULL && !m_connections[conn_id]->is_replica()) {
+            unsigned int value_len;
+            const char *value = m_obj_gen->get_value(request->m_key_index, &value_len);
+            m_connections[conn_id]->send_set_command(&timestamp, request->m_key, request->m_key_len, value, value_len,
+                                                     m_obj_gen->get_expiry(), m_config->data_offset);
+        }
         break;
     case rt_set:
         m_stats.update_set_op(&timestamp, response->get_total_len(), request->m_size, ts_diff(ref_sent, timestamp));

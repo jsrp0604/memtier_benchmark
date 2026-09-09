@@ -190,6 +190,9 @@ struct benchmark_config
     const char *uri;
     bool no_expiry;
     bool resolve_on_connect;
+    // On a GET miss (single-key GET only), write the value back with SET so
+    // the key is repopulated for subsequent GETs. 
+    bool set_on_miss;
     // WAIT related
     config_ratio wait_ratio;
     config_range num_slaves;

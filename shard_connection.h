@@ -103,6 +103,11 @@ struct request
     char *m_key;
     unsigned int m_key_len;
 
+    // object_generator key index for this request's key, populated for
+    // single-key GET requests when --set-on-miss is enabled
+    unsigned long long m_key_index;
+    bool m_key_index_valid;
+
     request(request_type type, unsigned int size, struct timeval *sent_time, unsigned int keys);
     virtual ~request(void);
 
@@ -158,7 +163,8 @@ public:
     void send_wait_command(struct timeval *sent_time, unsigned int num_slaves, unsigned int timeout);
     void send_set_command(struct timeval *sent_time, const char *key, int key_len, const char *value, int value_len,
                           int expiry, unsigned int offset);
-    void send_get_command(struct timeval *sent_time, const char *key, int key_len, unsigned int offset);
+    void send_get_command(struct timeval *sent_time, const char *key, int key_len, unsigned int offset,
+                          unsigned long long key_index = 0, bool key_index_valid = false);
     void send_mget_command(struct timeval *sent_time, const keylist *key_list);
     void send_verify_get_command(struct timeval *sent_time, const char *key, int key_len, const char *value,
                                  int value_len, unsigned int offset);

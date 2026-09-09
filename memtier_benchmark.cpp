@@ -647,6 +647,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
             "authenticate = %s\n"
             "select-db = %d\n"
             "no-expiry = %s\n"
+            "set-on-miss = %s\n"
             "wait-ratio = %u:%u\n"
             "num-slaves = %u-%u\n"
             "wait-timeout = %u-%u\n"
@@ -680,6 +681,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
             cfg->failed_keys_file ? cfg->failed_keys_file : "", cfg->connection_timeout, cfg->connection_stage_timeout,
             cfg->thread_conn_start_min_jitter_micros, cfg->thread_conn_start_max_jitter_micros, cfg->multi_key_get,
             cfg->authenticate ? cfg->authenticate : "", cfg->select_db, cfg->no_expiry ? "yes" : "no",
+            cfg->set_on_miss ? "yes" : "no",
             cfg->wait_ratio.a, cfg->wait_ratio.b, cfg->num_slaves.min, cfg->num_slaves.max, cfg->wait_timeout.min,
             cfg->wait_timeout.max, cfg->json_out_file, cfg->print_all_runs ? "yes" : "no"
 #ifdef HAVE_EVHTTP
@@ -759,6 +761,7 @@ static void config_print_to_json(json_handler *jsonhandler, struct benchmark_con
     jsonhandler->write_obj("authenticate", "\"%s\"", cfg->authenticate ? cfg->authenticate : "");
     jsonhandler->write_obj("select-db", "%d", cfg->select_db);
     jsonhandler->write_obj("no-expiry", "\"%s\"", cfg->no_expiry ? "true" : "false");
+    jsonhandler->write_obj("set-on-miss", "\"%s\"", cfg->set_on_miss ? "true" : "false");
     jsonhandler->write_obj("wait-ratio", "\"%u:%u\"", cfg->wait_ratio.a, cfg->wait_ratio.b);
     jsonhandler->write_obj("num-slaves", "\"%u:%u\"", cfg->num_slaves.min, cfg->num_slaves.max);
     jsonhandler->write_obj("wait-timeout", "\"%u-%u\"", cfg->wait_timeout.min, cfg->wait_timeout.max);
@@ -1184,6 +1187,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_multi_key_get,
         o_select_db,
         o_no_expiry,
+        o_set_on_miss,
         o_wait_ratio,
         o_num_slaves,
         o_wait_timeout,
@@ -1304,6 +1308,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         {"authenticate", 1, 0, 'a'},
         {"select-db", 1, 0, o_select_db},
         {"no-expiry", 0, 0, o_no_expiry},
+        {"set-on-miss", 0, 0, o_set_on_miss},
         {"wait-ratio", 1, 0, o_wait_ratio},
         {"num-slaves", 1, 0, o_num_slaves},
         {"wait-timeout", 1, 0, o_wait_timeout},
@@ -1886,6 +1891,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
             break;
         case o_no_expiry:
             cfg->no_expiry = true;
+            break;
+        case o_set_on_miss:
+            cfg->set_on_miss = true;
             break;
         case o_wait_ratio:
             cfg->wait_ratio = config_ratio(optarg);
@@ -2790,6 +2798,11 @@ void usage()
         "                                 when set to S, the defined data sizes will be evenly distributed across\n"
         "                                 the key range, see --key-maximum (default R)\n"
         "      --expiry-range=RANGE       Use random expiry values from the specified range\n"
+        "      --set-on-miss              On a GET miss, write the value back with SET (regenerated via\n"
+        "                                 the same key -> value mapping as a normal SET), repopulating\n"
+        "                                 the key so later GETs for it hit. Single-key GET only; not\n"
+        "                                 compatible with --multi-key-get, --data-import, --command, or\n"
+        "                                 --cluster-mode.\n"
         "\n"
         "Imported Data Options:\n"
         "      --data-import=FILE         Read object data from file\n"
@@ -5020,6 +5033,25 @@ int main(int argc, char *argv[])
     if (cfg.multi_key_get > 0 && cfg.arbitrary_commands->is_defined()) {
         fprintf(stderr, "error: --multi-key-get cannot be combined with --command.\n");
         usage();
+    }
+    if (cfg.set_on_miss) {
+        if (cfg.multi_key_get > 0) {
+            fprintf(stderr, "error: --set-on-miss cannot be combined with --multi-key-get.\n");
+            usage();
+        }
+        if (cfg.data_import) {
+            fprintf(stderr, "error: --set-on-miss cannot be combined with --data-import.\n");
+            usage();
+        }
+        if (cfg.arbitrary_commands->is_defined()) {
+            fprintf(stderr, "error: --set-on-miss cannot be combined with --command.\n");
+            usage();
+        }
+        if (cfg.cluster_mode) {
+            fprintf(stderr, "error: --set-on-miss cannot be combined with --cluster-mode "
+                            "(a GET may route to a read replica, which cannot accept the write-back).\n");
+            usage();
+        }
     }
     if (cfg.data_offset > 0) {
         if (cfg.data_offset > (1 << 29) - 1) {

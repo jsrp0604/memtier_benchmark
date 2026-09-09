@@ -125,7 +125,9 @@ request::request(request_type type, unsigned int size, struct timeval *sent_time
         m_serialized(NULL),
         m_serialized_len(0),
         m_key(NULL),
-        m_key_len(0)
+        m_key_len(0),
+        m_key_index(0),
+        m_key_index_valid(false)
 {
     if (sent_time != NULL)
         m_sent_time = *sent_time;
@@ -1746,7 +1748,8 @@ void shard_connection::send_set_command(struct timeval *sent_time, const char *k
 }
 
 
-void shard_connection::send_get_command(struct timeval *sent_time, const char *key, int key_len, unsigned int offset)
+void shard_connection::send_get_command(struct timeval *sent_time, const char *key, int key_len, unsigned int offset,
+                                        unsigned long long key_index, bool key_index_valid)
 {
     int cmd_size = 0;
 
@@ -1757,7 +1760,13 @@ void shard_connection::send_get_command(struct timeval *sent_time, const char *k
     request *req = new request(rt_get, cmd_size, sent_time, 1);
     if (m_config->retry_on_error) {
         capture_serialized_bytes(before, req);
-        if (key_len > 0) req->set_key_for_log(key, (unsigned int) key_len);
+    }
+    if ((m_config->retry_on_error || m_config->set_on_miss) && key_len > 0) {
+        req->set_key_for_log(key, (unsigned int) key_len);
+    }
+    if (m_config->set_on_miss && key_index_valid) {
+        req->m_key_index = key_index;
+        req->m_key_index_valid = true;
     }
     push_req(req);
 }
